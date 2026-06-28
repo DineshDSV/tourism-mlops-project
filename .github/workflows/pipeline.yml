@@ -1,0 +1,120 @@
+name: Tourism Wellness Package – MLOps Pipeline
+
+on:
+  push:
+    branches:
+      - main   # Triggers automatically on every push to the main branch
+
+jobs:
+
+  # ── Job 1: Register Dataset on Hugging Face ────────────────────────
+  register-dataset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: |
+          pip install huggingface_hub datasets pandas --quiet
+
+      - name: Upload Dataset to Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import os
+          from huggingface_hub import HfApi, login
+          login(token=os.environ["HF_TOKEN"])
+          api = HfApi()
+          repo_id = "DineshDSV/tourism-wellness-dataset"
+          api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
+          api.upload_file(
+              path_or_fileobj="tourism_project/data/tourism.csv",
+              path_in_repo="tourism.csv",
+              repo_id=repo_id,
+              repo_type="dataset",
+              token=os.environ["HF_TOKEN"]
+          )
+          print("Dataset registered successfully.")
+          EOF
+
+  # ── Job 2: Data Preparation ────────────────────────────────────────
+  data-prep:
+    needs: register-dataset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: |
+          pip install pandas scikit-learn huggingface_hub datasets --quiet
+
+      - name: Run Data Preparation Script
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python tourism_project/model_building/data_prep.py
+
+  # ── Job 3: Model Training with MLflow ─────────────────────────────
+  model-training:
+    needs: data-prep
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: |
+          pip install scikit-learn xgboost mlflow huggingface_hub datasets pandas numpy joblib --quiet
+
+      - name: Start MLflow Tracking Server
+        run: |
+          nohup mlflow ui --host 0.0.0.0 --port 5000 &
+          sleep 5
+          echo "MLflow server started."
+
+      - name: Train and Register Model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python tourism_project/model_building/train_model.py
+
+  # ── Job 4: Deploy to Hugging Face Spaces ──────────────────────────
+  deploy-hosting:
+    needs: [model-training, data-prep, register-dataset]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: |
+          pip install huggingface_hub --quiet
+
+      - name: Push Deployment Files to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python tourism_project/deployment/hosting.py
