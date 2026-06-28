@@ -19,5 +19,8 @@ ENV HOME=/home/user \
 WORKDIR $HOME/app
 COPY --chown=user . $HOME/app
 
-# Run the Streamlit app on port 8501
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableXsrfProtection=false"]
+# Hugging Face Spaces (Docker SDK) expects the app to listen on port 7860
+EXPOSE 7860
+
+# Run the Streamlit app on port 7860
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.enableXsrfProtection=false"]
